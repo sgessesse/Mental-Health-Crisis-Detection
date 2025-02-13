@@ -18,20 +18,6 @@ An AI-powered web application that analyzes social media text for signs of menta
 Access the deployed web application:  
 [http://mental-health-env.eba-3mrbnqp2.us-east-2.elasticbeanstalk.com/](http://mental-health-env.eba-3mrbnqp2.us-east-2.elasticbeanstalk.com/)
 
-## Project Structure
-Mental-Health-Crisis-Detection/
-├── app/ # FastAPI application
-│ ├── static/ # Frontend assets
-│ └── main.py # API endpoints
-│ └── application.py # API entry point
-├── notebooks/ # Jupyter notebooks
-│ ├── preprocess.ipynb # Data cleaning
-│ ├── model.ipynb # Model training
-│ ├── evaluate.ipynb # Performance metrics
-│ └── main.ipynb # End-to-end pipeline
-├── requirements.txt # Python dependencies
-└── README.md # Project documentation
-
 ## Installation
 
 1. **Clone Repository**
