@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Suicidal Ideation Detection</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+        .container { margin-top: 30px; }
+        .prompt { 
+            color: #444;
+            line-height: 1.6;
+            margin: 20px 0;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            border-left: 4px solid #007bff;
+        }
+        textarea { 
+            width: 100%; 
+            height: 150px; 
+            margin: 20px 0; 
+            padding: 10px;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+            font-size: 16px;
+        }
+        button { 
+            padding: 12px 25px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background 0.3s ease;
+        }
+        button:hover { background: #0056b3; }
+        .result { 
+            margin-top: 25px;
+            padding: 20px;
+            border-radius: 8px;
+            font-size: 16px;
+        }
+        .suicidal { background: #ffebee; border: 2px solid #ff5252; }
+        .non-suicidal { background: #e8f5e9; border: 2px solid #4caf50; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Mental Health Text Analysis</h1>
+        
+        <div class="prompt">
+            <p>This tool analyzes text content for potential signs of suicidal ideation using AI. It helps identify high-risk posts to enable timely intervention.</p>
+            <p>Please enter any text below to assess its mental health context:</p>
+        </div>
+
+        <textarea 
+            id="textInput" 
+            placeholder="Paste the text you want to analyze here..."></textarea>
+        
+        <button onclick="analyzeText()">Analyze Text</button>
+        
+        <div id="result" class="result"></div>
+    </div>
+
+    <script>
+        // (Keep your existing JavaScript code unchanged)
+        async function analyzeText() {
+            const text = document.getElementById('textInput').value;
+            const resultDiv = document.getElementById('result');
+            
+            if (!text) {
+                resultDiv.innerHTML = "Please enter some text to analyze.";
+                return;
+            }
+
+            try {
+                const response = await fetch('/predict', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ text: text })
+                });
+
+                const data = await response.json();
+                resultDiv.className = `result ${data.prediction.toLowerCase().replace(' ', '-')}`;
+                resultDiv.innerHTML = `
+                    <strong>Result:</strong> ${data.prediction}<br>
+                    <strong>Confidence:</strong> ${(data.confidence * 100).toFixed(1)}%
+                `;
+            } catch (error) {
+                resultDiv.innerHTML = "Error analyzing text. Please try again.";
+            }
+        }
+    </script>
+</body>
+</html>
