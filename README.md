@@ -1,6 +1,6 @@
 # Mental-Health-Crisis-Detection
 
-![Live Demo](https://img.shields.io/badge/Demo-Live%20Demo-brightgreen)](http://mental-health-env.eba-3mrbnqp2.us-east-2.elasticbeanstalk.com/)
+![Live Demo](https://img.shields.io/badge/Demo-Live%20Demo-brightgreen)](http://mental-health-env-1.eba-3mrbnqp2.us-east-2.elasticbeanstalk.com/)
 
 An AI-powered web application that analyzes social media text for signs of mental health crisis using NLP and deep learning.
 
@@ -16,7 +16,7 @@ An AI-powered web application that analyzes social media text for signs of menta
 ## Live Demo
 
 Access the deployed web application:  
-[http://mental-health-env.eba-3mrbnqp2.us-east-2.elasticbeanstalk.com/](http://mental-health-env.eba-3mrbnqp2.us-east-2.elasticbeanstalk.com/)
+[http://mental-health-env-1.eba-3mrbnqp2.us-east-2.elasticbeanstalk.com/](http://mental-health-env-1.eba-3mrbnqp2.us-east-2.elasticbeanstalk.com/)
 
 ## Installation
 
