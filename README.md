@@ -22,8 +22,8 @@ Access the deployed web application:
 
 1. **Clone Repository**
 
-git clone https://github.com/yourusername/mental-health-detection.git
-cd mental-health-detection
+git clone https://github.com/sgessesse/Mental-Health-Crisis-Detection.git
+cd Mental-Health-Crisis-Detection
 
 2. **Install Dependencies**
 
