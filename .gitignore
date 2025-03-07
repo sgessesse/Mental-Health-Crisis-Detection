@@ -1,11 +1,3 @@
-# .dockerignore
-**/__pycache__
-**/*.pyc
-**/.env
-**/.git
-LICENSE
-README.md
-
 # Python
 __pycache__/
 *.py[cod]
@@ -31,6 +23,10 @@ var/
 # Virtual Environment
 venv/
 ENV/
+.env
+.venv
+env/
+venv/
 
 # IDE
 .idea/
@@ -41,6 +37,7 @@ ENV/
 # Logs
 *.log
 logs/
+*.log.*
 
 # Local development
 .env
@@ -48,9 +45,22 @@ logs/
 *.db
 *.sqlite3
 
-# Git
-.git
-.gitignore
+# Model and Data files (too large for GitHub)
+app/model/
+data/
+model-training/results/
+*.pt
+*.pth
+*.onnx
+*.bin
+*.h5
+
+# NLTK Data
+nltk_data/
+
+# Jupyter
+.ipynb_checkpoints
+*.ipynb
 
 # Docker
 .docker/
@@ -62,7 +72,6 @@ tests/
 .pytest_cache/
 htmlcov/
 
-# Documentation
-docs/
-*.md
-!README.md
+# OS
+.DS_Store
+Thumbs.db 

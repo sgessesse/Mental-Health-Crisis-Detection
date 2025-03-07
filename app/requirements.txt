@@ -1,9 +1,25 @@
-fastapi>=0.68.0
-uvicorn>=0.15.0
-torch==1.12.0 -f https://download.pytorch.org/whl/torch_stable.html  # Minimum 1.10.0
-transformers==4.30.0  # Compatible with PyTorch 1.12
+# Web Framework
+fastapi==0.104.1
+uvicorn==0.24.0
+gunicorn==21.2.0
+
+# PyTorch (CPU-only for deployment)
+--find-links https://download.pytorch.org/whl/cpu/torch_stable.html
+torch==2.1.0+cpu
+torchvision==0.16.0+cpu
+
+# NLP and Model Dependencies
+transformers>=4.30.0
+tokenizers>=0.12.1
 nltk>=3.6.0
-boto3>=1.20.0
-gunicorn>=20.0.0
-numpy<2
-safetensors==0.3.1  # Version compatible with transformers 4.30
+safetensors>=0.3.1
+joblib>=1.1.0
+
+# Utilities
+numpy>=1.19.5
+psutil>=5.9.0
+python-multipart==0.0.6
+pydantic==2.4.2
+typing-extensions==4.8.0
+scikit-learn>=1.0.0
+

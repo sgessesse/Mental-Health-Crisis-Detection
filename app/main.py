@@ -1,14 +1,15 @@
 """
-Mental Health Crisis Detection API
+Mental Health Crisis Detection API - Optimized Version
 
 FastAPI web service for real-time analysis of text content using a 
-fine-tuned BERT model. Designed for Docker deployment on AWS Elastic Beanstalk.
+fine-tuned DistilBERT model. Designed for Docker deployment on AWS Elastic Beanstalk.
 
 Key Features:
 - Async model loading with thread synchronization
-- CPU-optimized inference
+- CPU-optimized inference with TorchScript
+- Memory-efficient text processing
+- Dynamic text length handling
 - NLTK text preprocessing pipeline
-- Dynamic health checks
 - React-style frontend integration
 """
 from fastapi import FastAPI, Request, HTTPException
@@ -16,22 +17,26 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 import torch
-from transformers import BertForSequenceClassification, BertTokenizerFast
-from nltk.corpus import stopwords
+from transformers import DistilBertTokenizerFast
 import nltk
+from nltk.corpus import stopwords
 import numpy as np
 import re
 import threading
+import os
+import gc
+import joblib
 
 # --- Global Configuration ---
-model = None # Will hold the loaded BERT model
-tokenizer = None # BERT tokenizer instance
+model = None  # Will hold the TorchScript model
+tokenizer = None  # DistilBERT tokenizer instance
+label_encoder = None  # For class labels
 model_loaded_event = threading.Event()  # Threading event for model load status
 
 # Configure NLTK for Docker environments
-nltk.data.path.append('/usr/share/nltk_data') # Shared volume in Docker
-nltk.download('stopwords') # Ensure stopwords are available
-STOP_WORDS = set(stopwords.words('english')) # English stopwords set
+nltk.data.path.append('/usr/share/nltk_data')  # Shared volume in Docker
+nltk.download('stopwords')  # Ensure stopwords are available
+STOP_WORDS = set(stopwords.words('english'))  # English stopwords set
 
 # --- FastAPI Setup ---
 app = FastAPI(title="Mental Health Detection API")
@@ -39,27 +44,50 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 
 def load_model_async():
     """
-    Asynchronously load BERT model and tokenizer from disk
+    Asynchronously load optimized DistilBERT model from disk
     
     Uses threading to prevent blocking server startup
+    Loads the TorchScript version for faster inference
     Forces CPU inference for compatibility with EB deployment
     """
-    global model, tokenizer
+    global model, tokenizer, label_encoder
     try:
-        # Load model artifacts from 'model' directory
-        model = BertForSequenceClassification.from_pretrained(
-            'model', 
-            local_files_only=True  # Ensure local files only
-        ).to('cpu')  # Explicit CPU allocation
+        # Memory optimization: explicitly set mode and device
+        torch.set_grad_enabled(False)  # Disable gradient calculation globally
         
-        tokenizer = BertTokenizerFast.from_pretrained('model')
+        # Load TorchScript model if available, otherwise load standard model
+        model_path = os.path.join('model', 'model_optimized.pt')
+        if os.path.exists(model_path):
+            model = torch.jit.load(model_path, map_location='cpu')
+            print("Loaded optimized TorchScript model")
+        else:
+            # Fallback to regular model
+            from transformers import DistilBertForSequenceClassification
+            model = DistilBertForSequenceClassification.from_pretrained(
+                'model', 
+                local_files_only=True,
+                torchscript=True  # Prepare for TorchScript conversion
+            ).to('cpu')
+            print("Loaded standard model")
+
+        # Force model to evaluation mode
+        if hasattr(model, 'eval'):
+            model.eval()
+        
+        # Load tokenizer and label encoder
+        tokenizer = DistilBertTokenizerFast.from_pretrained('model')
+        label_encoder = joblib.load(os.path.join('model', 'label_encoder.joblib'))
+        
+        # Run garbage collection after loading
+        gc.collect()
+        torch.cuda.empty_cache() if torch.cuda.is_available() else None
         
         # Signal completion to other threads
-        model_loaded_event.set()  
+        model_loaded_event.set()
         print("Model loaded successfully!")
     except Exception as e:
         print(f"Model loading failed: {e}")
-        raise # Critical failure - crash the app
+        raise  # Critical failure - crash the app
 
 @app.on_event("startup")
 def startup_event():
@@ -74,7 +102,7 @@ def startup_event():
 
 class TextRequest(BaseModel):
     """Request model for prediction endpoint"""
-    text: str # Raw input text to analyze
+    text: str  # Raw input text to analyze
 
 def preprocess_input(text: str) -> str:
     """
@@ -85,7 +113,7 @@ def preprocess_input(text: str) -> str:
     3. Remove stopwords
     
     Returns:
-        str: Cleaned text ready for BERT tokenization
+        str: Cleaned text ready for tokenization
     """
     # URL removal (common in social media posts)
     text = re.sub(r'http\S+', '', text)
@@ -105,8 +133,8 @@ async def predict(request: TextRequest):
     Steps:
     1. Validate model readiness
     2. Clean input text
-    3. Tokenize for BERT
-    4. Run model inference
+    3. Tokenize for DistilBERT
+    4. Run optimized model inference
     5. Format probabilities
     
     Returns:
@@ -121,31 +149,55 @@ async def predict(request: TextRequest):
     try:
         # Replicate training preprocessing
         cleaned_text = preprocess_input(request.text)
-
-        # BERT tokenization with same params as training
+        
+        # Memory-optimized tokenization - use shorter max_length (256) for shorter texts
+        max_length = min(256, max(32, len(cleaned_text.split()) + 20))  # Dynamic sizing
+        
+        # DistilBERT tokenization with optimization
         inputs = tokenizer(
             cleaned_text,
-            truncation=True,  # Enforce 512 token limit
+            truncation=True,  # Enforce max token limit
             padding='max_length',  # Pad to max length
-            max_length=512,  # Match model architecture
+            max_length=max_length,  # Dynamic max length
             return_tensors='pt'  # PyTorch tensors
         )
         
-        # Disable gradient calculation for inference
+        # Memory-efficient inference
         with torch.no_grad():
-            outputs = model(**inputs)
+            if isinstance(model, torch.jit.ScriptModule):
+                # TorchScript model expects separate tensors
+                outputs = model(inputs["input_ids"], inputs["attention_mask"])
+                # TorchScript may return a tuple or single tensor depending on how it was traced
+                logits = outputs[0] if isinstance(outputs, tuple) else outputs
+            else:
+                # Regular model expects a dictionary
+                outputs = model(**inputs)
+                logits = outputs.logits
         
-        # Convert logits to probabilities
-        probs = torch.nn.functional.softmax(outputs.logits, dim=-1)
-        prediction = np.argmax(probs.numpy())
+        # Convert logits to probabilities (memory-efficient)
+        probs = torch.nn.functional.softmax(logits, dim=-1)
+        
+        # Get prediction
+        prediction_id = int(torch.argmax(probs, dim=1).item())
+        confidence = float(probs[0][prediction_id].item())
+        
+        # Convert to label
+        prediction_label = "SUICIDAL" if prediction_id == 1 else "NON-SUICIDAL"
+        
+        # Clean up memory
+        del inputs, outputs, logits, probs
+        torch.cuda.empty_cache() if torch.cuda.is_available() else None
+        gc.collect()
         
         return {
-            "prediction": "SUICIDAL" if prediction == 1 else "NON-SUICIDAL",
-            "confidence": float(probs[0][prediction]) # Convert torch tensor
+            "prediction": prediction_label,
+            "confidence": confidence,
+            "input_length": len(cleaned_text.split()),  # Return input length for transparency
+            "max_length_used": max_length  # Return max length used
         }
     except Exception as e:
         print(f"Error during prediction: {e}")
-        return {"error": "Error analyzing text."}
+        return {"error": f"Error analyzing text: {str(e)}"}
 
 @app.get("/health")
 def health_check():

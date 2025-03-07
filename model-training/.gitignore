@@ -1,0 +1,11 @@
+
+#python cache files
+__pycache__
+_pycache_
+
+# Hardware setup and testing files
+setup_gpu.bat
+test_gpu.py
+test_label_types.py
+# Large files
+results

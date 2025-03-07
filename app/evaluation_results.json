@@ -1,0 +1,10 @@
+{
+  "accuracy": 0.9808682537972638,
+  "f1_weighted": 0.9808681094346146,
+  "precision_weighted": 0.9808828846596706,
+  "recall_weighted": 0.9808682537972638,
+  "avg_inference_time_ms": 0.12109412415510722,
+  "model_size_mb": 255.41309356689453,
+  "evaluation_time_seconds": 261.08215403556824,
+  "timestamp": "2025-03-06 20:59:53"
+}
