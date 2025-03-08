@@ -19,6 +19,7 @@ The application is deployed on AWS Elastic Beanstalk and distributed globally vi
 - 🧠 DistilBERT-based text classification (SUICIDAL/NON-SUICIDAL)
 - 🎯 98.1% Accuracy, 98.1% F1 Score
 - ⚡ Fast inference (0.12ms per prediction)
+- 🚀 Scaled to 4.1 RPS (246 RPM) on 1GB RAM instance
 - 🌐 FastAPI backend with CPU optimization
 - 📊 Comprehensive model training pipeline
 - 🐳 Docker-ready deployment configuration
