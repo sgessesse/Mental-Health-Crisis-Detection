@@ -1,10 +1,32 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Suicidal Ideation Detection</title>
+    <title>Mental Health Text Analysis</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500&display=swap" rel="stylesheet">
     <style>
-        body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
-        .container { margin-top: 30px; }
+        body { 
+            font-family: 'Roboto', Arial, sans-serif; 
+            max-width: 800px; 
+            margin: 0 auto; 
+            padding: 20px; 
+            line-height: 1.6;
+            color: #333;
+            background-color: #f8f9fa;
+        }
+        .container { 
+            margin-top: 30px; 
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #2c3e50;
+            margin-bottom: 25px;
+            border-bottom: 2px solid #e9ecef;
+            padding-bottom: 10px;
+        }
         .prompt { 
             color: #444;
             line-height: 1.6;
@@ -18,10 +40,16 @@
             width: 100%; 
             height: 150px; 
             margin: 20px 0; 
-            padding: 10px;
+            padding: 15px;
             border: 2px solid #ddd;
             border-radius: 6px;
             font-size: 16px;
+            transition: border-color 0.3s;
+            resize: vertical;
+        }
+        textarea:focus {
+            border-color: #007bff;
+            outline: none;
         }
         button { 
             padding: 12px 25px;
@@ -32,16 +60,118 @@
             cursor: pointer;
             font-size: 16px;
             transition: background 0.3s ease;
+            margin-right: 10px;
         }
         button:hover { background: #0056b3; }
+        button:disabled {
+            background: #cccccc;
+            cursor: not-allowed;
+        }
+        .options {
+            margin: 15px 0;
+            display: flex;
+            align-items: center;
+        }
+        .checkbox-container {
+            display: flex;
+            align-items: center;
+            margin-left: 15px;
+        }
         .result { 
             margin-top: 25px;
             padding: 20px;
             border-radius: 8px;
             font-size: 16px;
+            display: none;
         }
-        .suicidal { background: #ffebee; border: 2px solid #ff5252; }
-        .non-suicidal { background: #e8f5e9; border: 2px solid #4caf50; }
+        .result-content {
+            padding: 20px;
+        }
+        .suicidal { 
+            background: #ffebee; 
+            border: 2px solid #ff5252; 
+        }
+        .non-suicidal { 
+            background: #e8f5e9; 
+            border: 2px solid #4caf50; 
+        }
+        .confidence-bar {
+            height: 24px;
+            background: #e9ecef;
+            border-radius: 12px;
+            margin: 15px 0;
+            overflow: hidden;
+        }
+        .confidence-level {
+            height: 100%;
+            background: #4caf50;
+            border-radius: 12px;
+            transition: width 0.5s ease-in-out;
+            text-align: right;
+            color: white;
+            line-height: 24px;
+            padding-right: 10px;
+        }
+        .suicidal .confidence-level {
+            background: #ff5252;
+        }
+        .details-section {
+            margin-top: 15px;
+            border-top: 1px solid #ddd;
+            padding-top: 15px;
+            font-size: 14px;
+        }
+        .model-status {
+            margin-top: 15px;
+            padding: 10px;
+            background: #e9ecef;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+        .loading {
+            display: inline-block;
+            position: relative;
+            width: 80px;
+            height: 80px;
+            margin: 20px auto;
+        }
+        .loading div {
+            position: absolute;
+            top: 33px;
+            width: 13px;
+            height: 13px;
+            border-radius: 50%;
+            background: #007bff;
+            animation-timing-function: cubic-bezier(0, 1, 1, 0);
+        }
+        .loading div:nth-child(1) {
+            left: 8px;
+            animation: loading1 0.6s infinite;
+        }
+        .loading div:nth-child(2) {
+            left: 8px;
+            animation: loading2 0.6s infinite;
+        }
+        .loading div:nth-child(3) {
+            left: 32px;
+            animation: loading2 0.6s infinite;
+        }
+        .loading div:nth-child(4) {
+            left: 56px;
+            animation: loading3 0.6s infinite;
+        }
+        @keyframes loading1 {
+            0% { transform: scale(0); }
+            100% { transform: scale(1); }
+        }
+        @keyframes loading3 {
+            0% { transform: scale(1); }
+            100% { transform: scale(0); }
+        }
+        @keyframes loading2 {
+            0% { transform: translate(0, 0); }
+            100% { transform: translate(24px, 0); }
+        }
     </style>
 </head>
 <body>
@@ -57,21 +187,83 @@
             id="textInput" 
             placeholder="Paste the text you want to analyze here..."></textarea>
         
-        <button onclick="analyzeText()">Analyze Text</button>
+        <div class="options">
+            <button id="analyzeBtn" onclick="analyzeText()">Analyze Text</button>
+            <button id="clearBtn" onclick="clearText()">Clear</button>
+            <div class="checkbox-container">
+                <input type="checkbox" id="showDetails" name="showDetails">
+                <label for="showDetails">Show detailed analysis</label>
+            </div>
+        </div>
+
+        <div id="loadingIndicator" style="display: none; text-align: center;">
+            <div class="loading"><div></div><div></div><div></div><div></div></div>
+            <p>Analyzing text...</p>
+        </div>
         
-        <div id="result" class="result"></div>
+        <div id="result" class="result">
+            <div class="result-content" id="resultContent"></div>
+        </div>
+
+        <div class="model-status" id="modelStatus">
+            Checking model status...
+        </div>
     </div>
 
     <script>
-        // (Keep your existing JavaScript code unchanged)
+        // Check model status on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            checkModelStatus();
+        });
+
+        async function checkModelStatus() {
+            try {
+                const response = await fetch('/api/info');
+                const data = await response.json();
+                
+                const statusElement = document.getElementById('modelStatus');
+                
+                if (data.model_loaded) {
+                    statusElement.innerHTML = `
+                        <strong>Model Status:</strong> Ready <br>
+                        <strong>API Version:</strong> ${data.version} <br>
+                        <strong>PyTorch:</strong> ${data.torch_version} <br>
+                        <strong>CUDA Available:</strong> ${data.cuda_available}
+                    `;
+                    statusElement.style.color = '#4caf50';
+                } else {
+                    statusElement.innerHTML = `
+                        <strong>Model Status:</strong> Error <br>
+                        <strong>Error:</strong> ${data.model_error || 'Unknown error'}
+                    `;
+                    statusElement.style.color = '#ff5252';
+                    document.getElementById('analyzeBtn').disabled = true;
+                }
+            } catch (error) {
+                console.error('Error checking model status:', error);
+                document.getElementById('modelStatus').innerHTML = 'Error connecting to API';
+                document.getElementById('modelStatus').style.color = '#ff5252';
+                document.getElementById('analyzeBtn').disabled = true;
+            }
+        }
+
         async function analyzeText() {
             const text = document.getElementById('textInput').value;
             const resultDiv = document.getElementById('result');
+            const resultContent = document.getElementById('resultContent');
+            const showDetails = document.getElementById('showDetails').checked;
             
             if (!text) {
-                resultDiv.innerHTML = "Please enter some text to analyze.";
+                resultContent.innerHTML = "Please enter some text to analyze.";
+                resultDiv.style.display = 'block';
+                resultDiv.className = 'result';
                 return;
             }
+
+            // Show loading indicator
+            document.getElementById('loadingIndicator').style.display = 'block';
+            resultDiv.style.display = 'none';
+            document.getElementById('analyzeBtn').disabled = true;
 
             try {
                 const response = await fetch('/predict', {
@@ -79,18 +271,78 @@
                     headers: {
                         'Content-Type': 'application/json',
                     },
-                    body: JSON.stringify({ text: text })
+                    body: JSON.stringify({ 
+                        text: text,
+                        include_details: showDetails
+                    })
                 });
 
+                // Hide loading indicator
+                document.getElementById('loadingIndicator').style.display = 'none';
+                document.getElementById('analyzeBtn').disabled = false;
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.detail || 'Error analyzing text');
+                }
+
                 const data = await response.json();
-                resultDiv.className = `result ${data.prediction.toLowerCase().replace(' ', '-')}`;
-                resultDiv.innerHTML = `
-                    <strong>Result:</strong> ${data.prediction}<br>
-                    <strong>Confidence:</strong> ${(data.confidence * 100).toFixed(1)}%
+                
+                // Calculate confidence as percentage
+                const confidencePercent = (data.confidence * 100).toFixed(1);
+                
+                // Set result class based on prediction
+                resultDiv.className = `result ${data.prediction.toLowerCase().replace('-', '-')}`;
+                
+                // Build result HTML
+                let resultHTML = `
+                    <h2>Analysis Result</h2>
+                    <p><strong>Classification:</strong> ${data.prediction}</p>
+                    <p><strong>Confidence:</strong> ${confidencePercent}%</p>
+                    <div class="confidence-bar">
+                        <div class="confidence-level" style="width: ${confidencePercent}%">${confidencePercent}%</div>
+                    </div>
+                    <p><strong>Processing time:</strong> ${(data.processing_time * 1000).toFixed(1)} ms</p>
                 `;
+                
+                // Add details if available
+                if (data.details) {
+                    resultHTML += `
+                        <div class="details-section">
+                            <h3>Detailed Analysis</h3>
+                            <p><strong>Input length:</strong> ${data.details.input_length} characters</p>
+                            <p><strong>Token count:</strong> ${data.details.token_count}</p>
+                            <p><strong>Text truncated:</strong> ${data.details.truncated ? 'Yes' : 'No'}</p>
+                            <p><strong>Model:</strong> ${data.details.model_type}</p>
+                            <h4>Class Probabilities:</h4>
+                            <ul>
+                    `;
+                    
+                    // Add class probabilities
+                    for (const [className, probability] of Object.entries(data.details.class_probabilities)) {
+                        const probPercent = (probability * 100).toFixed(2);
+                        resultHTML += `<li>${className}: ${probPercent}%</li>`;
+                    }
+                    
+                    resultHTML += `</ul></div>`;
+                }
+                
+                resultContent.innerHTML = resultHTML;
+                resultDiv.style.display = 'block';
+                
             } catch (error) {
-                resultDiv.innerHTML = "Error analyzing text. Please try again.";
+                document.getElementById('loadingIndicator').style.display = 'none';
+                document.getElementById('analyzeBtn').disabled = false;
+                
+                resultDiv.className = 'result';
+                resultContent.innerHTML = `<p>Error: ${error.message || 'Failed to analyze text. Please try again.'}</p>`;
+                resultDiv.style.display = 'block';
             }
+        }
+        
+        function clearText() {
+            document.getElementById('textInput').value = '';
+            document.getElementById('result').style.display = 'none';
         }
     </script>
 </body>

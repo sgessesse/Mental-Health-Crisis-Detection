@@ -1,214 +1,308 @@
 """
-Mental Health Crisis Detection API - Optimized Version
-
-FastAPI web service for real-time analysis of text content using a 
-fine-tuned DistilBERT model. Designed for Docker deployment on AWS Elastic Beanstalk.
-
-Key Features:
-- Async model loading with thread synchronization
-- CPU-optimized inference with TorchScript
-- Memory-efficient text processing
-- Dynamic text length handling
-- NLTK text preprocessing pipeline
-- React-style frontend integration
+Mental Health API - Step 3: Model Inference and UI
+Adding real model inference and user interface
 """
-from fastapi import FastAPI, Request, HTTPException
-from fastapi.responses import HTMLResponse, JSONResponse
-from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
-import torch
-from transformers import DistilBertTokenizerFast
-import nltk
-from nltk.corpus import stopwords
-import numpy as np
-import re
-import threading
+import logging
 import os
-import gc
+import numpy as np
 import joblib
+import torch
+from fastapi import FastAPI, HTTPException, Request, Form
+from fastapi.responses import JSONResponse, HTMLResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
+from typing import Optional
+import time
+from pydantic import BaseModel
 
-# --- Global Configuration ---
-model = None  # Will hold the TorchScript model
-tokenizer = None  # DistilBERT tokenizer instance
-label_encoder = None  # For class labels
-model_loaded_event = threading.Event()  # Threading event for model load status
+# Import model specific libraries
+from transformers import AutoTokenizer, AutoModelForSequenceClassification
 
-# Configure NLTK for Docker environments
-nltk.data.path.append('/usr/share/nltk_data')  # Shared volume in Docker
-nltk.download('stopwords')  # Ensure stopwords are available
-STOP_WORDS = set(stopwords.words('english'))  # English stopwords set
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-# --- FastAPI Setup ---
-app = FastAPI(title="Mental Health Detection API")
+# Create FastAPI app
+app = FastAPI(title="Mental Health API - Step 3: Model Inference and UI")
+
+# Mount static directory
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
-def load_model_async():
-    """
-    Asynchronously load optimized DistilBERT model from disk
+# Define models for API
+class PredictionRequest(BaseModel):
+    text: str
+    include_details: Optional[bool] = False
+
+class PredictionResponse(BaseModel):
+    prediction: str
+    confidence: float
+    processing_time: float
+    details: Optional[dict] = None
+
+# Global variables for model and tokenizer
+MODEL_PATH = "model"
+tokenizer = None
+model = None
+label_encoder = None
+model_loaded = False
+model_error = None
+
+# Load label encoder
+try:
+    logger.info("Loading label encoder...")
+    label_encoder_path = os.path.join(MODEL_PATH, "label_encoder.joblib")
+    if os.path.exists(label_encoder_path):
+        label_encoder = joblib.load(label_encoder_path)
+        logger.info(f"Label encoder loaded with classes: {label_encoder.classes_}")
+    else:
+        logger.warning("Label encoder file not found, using default classes")
+        from sklearn.preprocessing import LabelEncoder
+        label_encoder = LabelEncoder()
+        label_encoder.classes_ = np.array(['NON-SUICIDAL', 'SUICIDAL'])
+        # Save the default label encoder for future use
+        try:
+            os.makedirs(MODEL_PATH, exist_ok=True)
+            joblib.dump(label_encoder, label_encoder_path)
+            logger.info(f"Created and saved default label encoder to {label_encoder_path}")
+        except Exception as e:
+            logger.warning(f"Could not save default label encoder: {str(e)}")
+except Exception as e:
+    logger.error(f"Error loading label encoder: {str(e)}")
+    model_error = f"Label encoder error: {str(e)}"
+    # Create a fallback label encoder
+    from sklearn.preprocessing import LabelEncoder
+    label_encoder = LabelEncoder()
+    label_encoder.classes_ = np.array(['NON-SUICIDAL', 'SUICIDAL'])
+    logger.info("Created fallback label encoder with default classes")
+
+# Function to load model
+def load_model():
+    global tokenizer, model, model_loaded, model_error
     
-    Uses threading to prevent blocking server startup
-    Loads the TorchScript version for faster inference
-    Forces CPU inference for compatibility with EB deployment
-    """
-    global model, tokenizer, label_encoder
     try:
-        # Memory optimization: explicitly set mode and device
-        torch.set_grad_enabled(False)  # Disable gradient calculation globally
+        logger.info(f"Loading model and tokenizer from {MODEL_PATH}...")
+        logger.info(f"Current directory: {os.getcwd()}")
+        logger.info(f"MODEL_PATH directory contents: {os.listdir(MODEL_PATH) if os.path.exists(MODEL_PATH) else 'Not found'}")
         
-        # Load TorchScript model if available, otherwise load standard model
-        model_path = os.path.join('model', 'model_optimized.pt')
-        if os.path.exists(model_path):
-            model = torch.jit.load(model_path, map_location='cpu')
-            print("Loaded optimized TorchScript model")
-        else:
-            # Fallback to regular model
-            from transformers import DistilBertForSequenceClassification
-            model = DistilBertForSequenceClassification.from_pretrained(
-                'model', 
-                local_files_only=True,
-                torchscript=True  # Prepare for TorchScript conversion
-            ).to('cpu')
-            print("Loaded standard model")
-
-        # Force model to evaluation mode
-        if hasattr(model, 'eval'):
-            model.eval()
+        # Load tokenizer
+        tokenizer_path = MODEL_PATH
+        logger.info(f"Loading tokenizer from {tokenizer_path}")
+        tokenizer = AutoTokenizer.from_pretrained(tokenizer_path)
+        logger.info(f"Tokenizer loaded: {tokenizer.__class__.__name__}")
         
-        # Load tokenizer and label encoder
-        tokenizer = DistilBertTokenizerFast.from_pretrained('model')
-        label_encoder = joblib.load(os.path.join('model', 'label_encoder.joblib'))
+        # Load model
+        model_path = MODEL_PATH
+        logger.info(f"Loading model from {model_path}")
+        model = AutoModelForSequenceClassification.from_pretrained(model_path)
+        model.eval()  # Set model to evaluation mode
+        logger.info(f"Model loaded: {model.__class__.__name__}, Number of parameters: {sum(p.numel() for p in model.parameters())}")
         
-        # Run garbage collection after loading
-        gc.collect()
-        torch.cuda.empty_cache() if torch.cuda.is_available() else None
+        # Log model configuration
+        if hasattr(model, 'config'):
+            logger.info(f"Model config: {model.config}")
         
-        # Signal completion to other threads
-        model_loaded_event.set()
-        print("Model loaded successfully!")
+        model_loaded = True
+        return True
     except Exception as e:
-        print(f"Model loading failed: {e}")
-        raise  # Critical failure - crash the app
+        import traceback
+        logger.error(f"Error loading model: {str(e)}")
+        logger.error(traceback.format_exc())
+        model_error = f"Model loading error: {str(e)}"
+        model_loaded = False
+        return False
 
+# Load model on startup
 @app.on_event("startup")
-def startup_event():
-    """
-    Startup handler - initiates async model loading
-    
-    Runs in separate thread to maintain API responsiveness
-    during potentially slow model initialization
-    """
-    thread = threading.Thread(target=load_model_async)
-    thread.start()
-
-class TextRequest(BaseModel):
-    """Request model for prediction endpoint"""
-    text: str  # Raw input text to analyze
-
-def preprocess_input(text: str) -> str:
-    """
-    Replicate notebook preprocessing pipeline
-    
-    1. Remove URLs and special characters
-    2. Convert to lowercase
-    3. Remove stopwords
-    
-    Returns:
-        str: Cleaned text ready for tokenization
-    """
-    # URL removal (common in social media posts)
-    text = re.sub(r'http\S+', '', text)
-
-    # Retain only alphanumeric + whitespace
-    text = re.sub(r'[^A-Za-z0-9\s]+', '', text)
-
-    # Lowercase + stopword removal (matches training preprocessing)
-    text = ' '.join([word for word in text.lower().split() if word not in STOP_WORDS])
-    return text
-
-@app.post("/predict")
-async def predict(request: TextRequest):
-    """
-    Prediction endpoint for text analysis
-    
-    Steps:
-    1. Validate model readiness
-    2. Clean input text
-    3. Tokenize for DistilBERT
-    4. Run optimized model inference
-    5. Format probabilities
-    
-    Returns:
-        JSON: Prediction and confidence score
-    """
-    if not model_loaded_event.is_set():
-        raise HTTPException(
-            status_code=503,
-            detail="Model is still loading. Try again later."
-        )
-    
-    try:
-        # Replicate training preprocessing
-        cleaned_text = preprocess_input(request.text)
-        
-        # Memory-optimized tokenization - use shorter max_length (256) for shorter texts
-        max_length = min(256, max(32, len(cleaned_text.split()) + 20))  # Dynamic sizing
-        
-        # DistilBERT tokenization with optimization
-        inputs = tokenizer(
-            cleaned_text,
-            truncation=True,  # Enforce max token limit
-            padding='max_length',  # Pad to max length
-            max_length=max_length,  # Dynamic max length
-            return_tensors='pt'  # PyTorch tensors
-        )
-        
-        # Memory-efficient inference
-        with torch.no_grad():
-            if isinstance(model, torch.jit.ScriptModule):
-                # TorchScript model expects separate tensors
-                outputs = model(inputs["input_ids"], inputs["attention_mask"])
-                # TorchScript may return a tuple or single tensor depending on how it was traced
-                logits = outputs[0] if isinstance(outputs, tuple) else outputs
-            else:
-                # Regular model expects a dictionary
-                outputs = model(**inputs)
-                logits = outputs.logits
-        
-        # Convert logits to probabilities (memory-efficient)
-        probs = torch.nn.functional.softmax(logits, dim=-1)
-        
-        # Get prediction
-        prediction_id = int(torch.argmax(probs, dim=1).item())
-        confidence = float(probs[0][prediction_id].item())
-        
-        # Convert to label
-        prediction_label = "SUICIDAL" if prediction_id == 1 else "NON-SUICIDAL"
-        
-        # Clean up memory
-        del inputs, outputs, logits, probs
-        torch.cuda.empty_cache() if torch.cuda.is_available() else None
-        gc.collect()
-        
-        return {
-            "prediction": prediction_label,
-            "confidence": confidence,
-            "input_length": len(cleaned_text.split()),  # Return input length for transparency
-            "max_length_used": max_length  # Return max length used
-        }
-    except Exception as e:
-        print(f"Error during prediction: {e}")
-        return {"error": f"Error analyzing text: {str(e)}"}
-
-@app.get("/health")
-def health_check():
-    """Dynamic health check reflecting model status"""
-    return JSONResponse(
-        content={"status": "ready" if model_loaded_event.is_set() else "loading"},
-        status_code=200 if model_loaded_event.is_set() else 503
-    )
+async def startup_event():
+    load_model()
 
 @app.get("/", response_class=HTMLResponse)
-async def read_root():
-    """Serve frontend interface"""
-    with open("static/index.html") as f:
-        return HTMLResponse(content=f.read(), status_code=200)
+async def root():
+    """Serve the HTML UI"""
+    return FileResponse("static/index.html")
+
+@app.get("/api/info")
+async def info():
+    """API information endpoint"""
+    return {
+        "api_name": "Mental Health Detection API",
+        "version": "3.0",
+        "model_loaded": model_loaded,
+        "model_error": model_error,
+        "numpy_version": np.__version__,
+        "joblib_version": joblib.__version__,
+        "torch_version": torch.__version__,
+        "cuda_available": torch.cuda.is_available(),
+        "available_endpoints": [
+            {"path": "/", "method": "GET", "description": "HTML UI"},
+            {"path": "/api/info", "method": "GET", "description": "API information"},
+            {"path": "/health", "method": "GET", "description": "Health check"},
+            {"path": "/predict", "method": "POST", "description": "Make a prediction"},
+            {"path": "/reload-model", "method": "POST", "description": "Reload the model (admin only)"}
+        ]
+    }
+
+@app.get("/health")
+async def health():
+    """Health check endpoint"""
+    # Get memory usage
+    mem_info = os.popen('free -m').readlines() if os.name != 'nt' else ["100", "200", "300"]
+    try:
+        available_memory = int(mem_info[1].split()[6]) if os.name != 'nt' else 1000
+    except:
+        available_memory = 0
+        
+    status = "ready" if model_loaded else "error"
+    status_code = 200 if model_loaded else 500
+    
+    response = {
+        "status": status,
+        "model_loaded": model_loaded,
+        "model_error": model_error,
+        "available_memory_mb": available_memory,
+        "cuda_available": torch.cuda.is_available()
+    }
+    
+    return JSONResponse(content=response, status_code=status_code)
+
+@app.post("/predict", response_model=PredictionResponse)
+async def predict(request: PredictionRequest):
+    """Real prediction endpoint using the loaded model"""
+    if not model_loaded:
+        raise HTTPException(status_code=503, 
+                           detail=f"Model not loaded. Error: {model_error}")
+    
+    # Check if label encoder is available
+    if label_encoder is None:
+        logger.error("Label encoder is not available")
+        raise HTTPException(status_code=503,
+                           detail="Label encoder is not available. Please reload the model.")
+    
+    start_time = time.time()
+    
+    try:
+        text = request.text
+        include_details = request.include_details
+        
+        # Log the received text (truncated for privacy)
+        truncated_text = text[:30] + "..." if len(text) > 30 else text
+        logger.info(f"Processing request. Text: {truncated_text}")
+        
+        # Tokenize the input text
+        inputs = tokenizer(text, return_tensors="pt", 
+                          truncation=True, max_length=512, 
+                          padding="max_length")
+        
+        # Make prediction
+        with torch.no_grad():
+            outputs = model(**inputs)
+            
+            # Handle different output formats
+            # If outputs is a tuple, the first element typically contains the logits
+            if isinstance(outputs, tuple):
+                logits = outputs[0]
+            # If outputs has a logits attribute (e.g., transformers.modeling_outputs.SequenceClassifierOutput)
+            elif hasattr(outputs, 'logits'):
+                logits = outputs.logits
+            else:
+                # If we can't determine the format, try to use outputs directly
+                logits = outputs
+                
+            probabilities = torch.softmax(logits, dim=1)
+            confidence, prediction_idx = torch.max(probabilities, dim=1)
+        
+        # Convert prediction index to class name
+        prediction_idx_value = prediction_idx.item()
+        logger.info(f"Raw prediction index: {prediction_idx_value}")
+        
+        # Ensure the index is within bounds of label_encoder.classes_
+        if prediction_idx_value < 0 or prediction_idx_value >= len(label_encoder.classes_):
+            logger.warning(f"Prediction index {prediction_idx_value} out of bounds for classes {label_encoder.classes_}")
+            prediction = "UNKNOWN"
+        else:
+            prediction = label_encoder.classes_[prediction_idx_value]
+            
+        confidence_value = confidence.item()
+        logger.info(f"Prediction: {prediction}, Confidence: {confidence_value}")
+        
+        # Calculate processing time
+        processing_time = time.time() - start_time
+        
+        # Prepare response
+        response = {
+            "prediction": prediction,
+            "confidence": confidence_value,
+            "processing_time": processing_time
+        }
+        
+        # Add details if requested
+        if include_details:
+            # Get all class probabilities
+            all_probs = probabilities[0].tolist()
+            
+            # Ensure we have the right number of probabilities
+            if len(all_probs) == len(label_encoder.classes_):
+                class_probs = {cls: prob for cls, prob in zip(label_encoder.classes_, all_probs)}
+            else:
+                logger.warning(f"Number of probabilities ({len(all_probs)}) doesn't match number of classes ({len(label_encoder.classes_)})")
+                class_probs = {f"class_{i}": prob for i, prob in enumerate(all_probs)}
+            
+            # Add details to response
+            response["details"] = {
+                "class_probabilities": class_probs,
+                "input_length": len(text),
+                "token_count": inputs.input_ids.shape[1],
+                "truncated": len(text) > 512,
+                "model_type": "DistilBERT for Sequence Classification",
+                "raw_prediction_index": prediction_idx_value
+            }
+        
+        return response
+    
+    except Exception as e:
+        logger.error(f"Error in prediction: {str(e)}")
+        raise HTTPException(status_code=500, 
+                           detail=f"Error processing request: {str(e)}")
+
+@app.post("/reload-model")
+async def reload_model(request: Request):
+    """Admin endpoint to reload the model"""
+    try:
+        # In a real application, you would add authentication here
+        success = load_model()
+        if success:
+            return {"status": "success", "message": "Model reloaded successfully"}
+        else:
+            raise HTTPException(status_code=500, 
+                               detail=f"Failed to reload model: {model_error}")
+    except Exception as e:
+        logger.error(f"Error reloading model: {str(e)}")
+        raise HTTPException(status_code=500, 
+                           detail=f"Error reloading model: {str(e)}")
+
+# Fallback route for 404 errors
+@app.exception_handler(404)
+async def custom_404_handler(request, exc):
+    return JSONResponse(
+        status_code=404,
+        content={"error": "The requested resource was not found",
+                "available_endpoints": ["/", "/api/info", "/health", "/predict"]}
+    )
+
+# Fallback for 500 errors
+@app.exception_handler(500)
+async def custom_500_handler(request, exc):
+    return JSONResponse(
+        status_code=500,
+        content={"error": f"Internal server error: {str(exc)}",
+                "model_loaded": model_loaded,
+                "model_error": model_error}
+    )
+
+# Make sure transformers logging is set to warning only
+import transformers
+transformers.logging.set_verbosity_warning()
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8080) 
