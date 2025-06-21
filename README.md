@@ -7,12 +7,8 @@
 
 An AI-powered web application that analyzes social media text for signs of mental health crisis using NLP and deep learning. The system uses a fine-tuned DistilBERT model optimized for deployment, achieving 98% accuracy while maintaining fast inference times.
 
-## Live Demo
+**Disclaimer:** This project is developed strictly for educational and research purposes. It is not intended for clinical use, diagnosis, or as a substitute for professional medical advice, diagnosis, or treatment. The outputs of this model should never be used to make decisions regarding suicidal ideation or any mental health condition. Always consult with a qualified mental health professional for any health concerns.
 
-Access the deployed web application:  
-[https://d1fih8bmf1o6sh.cloudfront.net/](https://d1fih8bmf1o6sh.cloudfront.net/)
-
-The application is deployed on AWS Elastic Beanstalk and distributed globally via Amazon CloudFront CDN.
 
 ## Features
 
@@ -23,7 +19,6 @@ The application is deployed on AWS Elastic Beanstalk and distributed globally vi
 - 🌐 FastAPI backend with CPU optimization
 - 📊 Comprehensive model training pipeline
 - 🐳 Docker-ready deployment configuration
-- ☁️ AWS Elastic Beanstalk deployment support
 - 💾 Optimized model size (255MB)
 - 📈 Consistent performance across text lengths
 
@@ -128,22 +123,6 @@ docker build -t mental-health-detection .
 docker run -p 8000:8080 mental-health-detection
 ```
 
-## AWS Elastic Beanstalk Deployment
-
-1. **Initialize EB CLI**
-```bash
-eb init -p docker mental-health-crisis-detection
-```
-
-2. **Create Environment**
-```bash
-eb create production-env
-```
-
-3. **Deploy**
-```bash
-eb deploy
-```
 
 ## Important Notes
 
@@ -152,13 +131,16 @@ eb deploy
 - The system is optimized for CPU inference in production
 - Different requirements files are maintained for training (GPU) and deployment (CPU)
 
-## Ethical Considerations
+## Ethical Considerations & Important Disclaimer
 
-- This tool is for preliminary screening only
-- Predictions should never be used without human validation
-- Always provide mental health resources with results
-- Maintain strict user privacy and data protection
-- Not a replacement for professional mental health assessment
+**CRITICAL DISCLAIMER:** This project is for **educational and research purposes only**. It is explicitly **NOT intended for clinical use, diagnosis, or as a substitute for professional medical advice, diagnosis, or treatment.** The model's outputs are based on patterns learned from data and should **NEVER** be used to make decisions regarding suicidal ideation or any mental health condition. Always consult with a qualified mental health professional for any health concerns.
+
+- This tool provides preliminary insights only.
+- Predictions must **always** be validated by a human expert.
+- It is crucial to provide appropriate mental health resources alongside any results.
+- Strict user privacy and data protection measures must be maintained.
+- This project is not a replacement for professional mental health assessment or intervention.
+- The developers and contributors of this project are not liable for any misuse or misinterpretation of the information provided by this tool.
 
 ## Contributing
 
@@ -175,4 +157,3 @@ MIT License - see LICENSE for details
 - Dataset: Reddit Mental Health Dataset from Kaggle
 - Base Model: DistilBERT from Hugging Face
 - FastAPI framework
-- AWS Elastic Beanstalk for hosting
